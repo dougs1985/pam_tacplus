@@ -82,6 +82,7 @@ int tac_encryption = 1;
 typedef unsigned char flag;
 flag quiet = 0;
 char *user = NULL; /* global, because of signal handler */
+int timeout = 60;
 
 #if defined(HAVE_PUTUTXLINE)
 struct utmpx utmpx;
@@ -107,7 +108,7 @@ static struct option long_options[] =
 				NULL, 'c' }, { "service", required_argument, NULL, 'S' }, {
 				"protocol", required_argument, NULL, 'P' }, { "remote",
 				required_argument, NULL, 'r' }, { "login", required_argument,
-				NULL, 'L' }, { "tty", required_argument, NULL, 'y' },
+				NULL, 'L' }, { "tty", required_argument, NULL, 'y' }, {"timeout", required_argument, NULL, 't'},
 
 		/* modifiers */
 		{ "quiet", no_argument, NULL, 'q' },
@@ -116,7 +117,7 @@ static struct option long_options[] =
 						0, 0, 0, 0 } };
 
 /* command line letters */
-char *opt_string = "TRAVhu:p:s:k:c:qr:wnS:P:L:y:";
+char *opt_string = "TRAVhu:p:s:k:c:qr:wnS:P:L:y:t:";
 
 int main(int argc, char **argv) {
 	char *pass = NULL;
@@ -220,6 +221,9 @@ int main(int argc, char **argv) {
 			case 'y':
 				tty = optarg;
 				break;
+			case 't':
+				timeout = atoi(optarg);
+				break;
 			}
 		}
 	}
@@ -259,9 +263,20 @@ int main(int argc, char **argv) {
 	memset(&hints, 0, sizeof hints);
 	hints.ai_family = AF_UNSPEC;
 	hints.ai_socktype = SOCK_STREAM;
-	ret = getaddrinfo(tac_server_name, "tacacs", &hints, &tac_server);
+
+	char *server_name;
+	char *port = NULL;
+    server_name = tac_server_name;
+    port = strchr(tac_server_name, ':');
+
+    if (port != NULL) {
+	    *port = '\0';
+        port++;
+    }
+
+	ret = getaddrinfo(server_name, (port == NULL) ? "49" : port, &hints, &tac_server);
 	if (ret != 0) {
-		printf("error: resolving name %s: %s", tac_server_name,
+		printf("error: resolving name %s: %s", server_name,
 				gai_strerror(ret));
 		exit(EXIT_ERR);
 	}
@@ -298,7 +313,7 @@ int main(int argc, char **argv) {
 		tac_add_attrib(&attr, "service", service);
 		tac_add_attrib(&attr, "protocol", protocol);
 
-		tac_fd = tac_connect_single(tac_server, tac_secret, NULL, 60);
+		tac_fd = tac_connect_single(tac_server, tac_secret, NULL, timeout);
 		if (tac_fd < 0) {
 			if (!quiet)
 				printf("Error connecting to TACACS+ server: %m\n");
@@ -340,7 +355,7 @@ int main(int argc, char **argv) {
 		tac_add_attrib(&attr, "service", service);
 		tac_add_attrib(&attr, "protocol", protocol);
 
-		tac_fd = tac_connect_single(tac_server, tac_secret, NULL, 60);
+		tac_fd = tac_connect_single(tac_server, tac_secret, NULL, timeout);
 		if (tac_fd < 0) {
 			if (!quiet)
 				printf("Error connecting to TACACS+ server: %m\n");
@@ -442,7 +457,7 @@ int main(int argc, char **argv) {
 		sprintf(buf, "%hu", task_id);
 		tac_add_attrib(&attr, "task_id", buf);
 
-		tac_fd = tac_connect_single(tac_server, tac_secret, NULL, 60);
+		tac_fd = tac_connect_single(tac_server, tac_secret, NULL, timeout);
 		if (tac_fd < 0) {
 			if (!quiet)
 				printf("Error connecting to TACACS+ server: %m\n");
@@ -493,7 +508,7 @@ void authenticate(const struct addrinfo *tac_server, const char *tac_secret,
 	int ret;
 	struct areply arep;
 
-	tac_fd = tac_connect_single(tac_server, tac_secret, NULL, 60);
+	tac_fd = tac_connect_single(tac_server, tac_secret, NULL, timeout);
 	if (tac_fd < 0) {
 		if (!quiet)
 			printf("Error connecting to TACACS+ server: %m\n");
@@ -555,6 +570,7 @@ void showusage(char *progname) {
 	printf("  -h, --help          display this help and exit\n");
 	printf("  -V, --version       display version number and exit\n\n");
 	printf(" Data:\n");
+	printf("  -t, --timeout       server connection timeout (default 60 sec.)\n");
 	printf("  -u, --username      remote user name\n");
 	printf("  -p, --password      remote user password\n");
 	printf("  -s, --server        server IP address or FQDN\n");
